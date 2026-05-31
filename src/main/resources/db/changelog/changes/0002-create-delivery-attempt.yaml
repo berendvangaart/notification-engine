@@ -1,0 +1,78 @@
+databaseChangeLog:
+  - changeSet:
+      id: 0002
+      author: berend
+      changes:
+        - createTable:
+            tableName: delivery_attempt
+            columns:
+              - column:
+                  name: attempt_id
+                  type: VARCHAR(36)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: event_id
+                  type: VARCHAR(36)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: job_id
+                  type: VARCHAR(36)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: channel_type
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: destination
+                  type: VARCHAR(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attempt_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: terminal
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: error_detail
+                  type: TEXT
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            tableName: delivery_attempt
+            indexName: idx_delivery_attempt_event_id
+            columns:
+              - column:
+                  name: event_id
+
+        - createIndex:
+            tableName: delivery_attempt
+            indexName: idx_delivery_attempt_job_id
+            columns:
+              - column:
+                  name: job_id
