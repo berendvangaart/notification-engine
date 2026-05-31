@@ -1,0 +1,318 @@
+@startuml notification-engine
+
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam linetype ortho
+
+' ─────────────────────────────────────────
+' ENUMS
+' ─────────────────────────────────────────
+
+enum ChannelType {
+    EMAIL
+    WEBHOOK
+}
+
+enum DeliveryStatus {
+    PENDING
+    SENT
+    FAILED
+}
+
+' ─────────────────────────────────────────
+' DOMAIN TYPES
+' ─────────────────────────────────────────
+
+package "Domain" {
+
+    class RawEvent {
+        + eventId: String
+        + eventType: String
+        + source: String
+        + payload: Map<String, Object>
+    }
+
+    class InternalEvent {
+        + eventId: String
+        + eventType: String
+        + source: String
+        + payload: Map<String, Object>
+        + receivedAt: Instant
+    }
+
+    class DispatchJob {
+        + jobId: String
+        + eventId: String
+        + channelType: ChannelType
+        + destination: String
+        + message: RenderedMessage
+        + attemptCount: int
+        + createdAt: Instant
+    }
+
+    class RenderedMessage {
+        + subject: String
+        + body: String
+    }
+
+    class DispatchResult {
+        + success: boolean
+        + retryable: boolean
+        + errorDetail: String
+    }
+
+    class ChannelMapping {
+        + mappingId: String
+        + eventType: String
+        + channelType: ChannelType
+        + destination: String
+        + enabled: boolean
+        + createdAt: Instant
+        + updatedAt: Instant
+    }
+
+    class DeliveryAttempt {
+        + attemptId: String
+        + eventId: String
+        + jobId: String
+        + channelType: ChannelType
+        + destination: String
+        + status: DeliveryStatus
+        + attemptCount: int
+        + terminal: boolean
+        + errorDetail: String
+        + createdAt: Instant
+        + updatedAt: Instant
+    }
+
+    class Template {
+        + templateId: String
+        + eventType: String
+        + channelType: ChannelType
+        + subjectPattern: String
+        + bodyPattern: String
+    }
+
+}
+
+' ─────────────────────────────────────────
+' INTERFACES / PORTS
+' ─────────────────────────────────────────
+
+package "Ports" {
+
+    interface NotificationChannel {
+        + channelType(): ChannelType
+        + send(message: RenderedMessage, destination: String): DispatchResult
+    }
+
+    interface EventRouter {
+        + route(event: InternalEvent): int
+    }
+
+    interface EventNormalizer {
+        + normalize(raw: RawEvent): InternalEvent
+    }
+
+    interface TemplateRenderer {
+        + render(event: InternalEvent, channelType: ChannelType): RenderedMessage
+    }
+
+    interface RetryHandler {
+        + handle(job: DispatchJob): void
+    }
+
+    interface DeadLetterHandler {
+        + handle(job: DispatchJob): void
+    }
+
+}
+
+' ─────────────────────────────────────────
+' INTAKE LAYER
+' ─────────────────────────────────────────
+
+package "Intake" {
+
+    class HttpEventController {
+        + receiveEvent(raw: RawEvent): ResponseEntity
+    }
+
+    class KafkaIntakeConsumer {
+        + onMessage(raw: RawEvent): void
+    }
+
+    class EventNormalizerImpl {
+        + normalize(raw: RawEvent): InternalEvent
+    }
+
+}
+
+' ─────────────────────────────────────────
+' ROUTING LAYER
+' ─────────────────────────────────────────
+
+package "Routing" {
+
+    class EventRouterImpl {
+        + route(event: InternalEvent): int
+    }
+
+    class RoutingTable {
+        + getMappingsForEventType(eventType: String): List<ChannelMapping>
+    }
+
+}
+
+' ─────────────────────────────────────────
+' DISPATCH LAYER
+' ─────────────────────────────────────────
+
+package "Dispatch" {
+
+    class NotificationDispatcher {
+        + dispatch(job: DispatchJob): void
+    }
+
+    class EmailChannel {
+        + channelType(): ChannelType
+        + send(message: RenderedMessage, destination: String): DispatchResult
+    }
+
+    class WebhookChannel {
+        + channelType(): ChannelType
+        + send(message: RenderedMessage, destination: String): DispatchResult
+    }
+
+    class TemplateRendererImpl {
+        + render(event: InternalEvent, channelType: ChannelType): RenderedMessage
+    }
+
+}
+
+' ─────────────────────────────────────────
+' RELIABILITY LAYER
+' ─────────────────────────────────────────
+
+package "Reliability" {
+
+    class RetryHandlerImpl {
+        - maxAttempts: int
+        + handle(job: DispatchJob): void
+        - backoffDuration(attempt: int): Duration
+    }
+
+    class DeadLetterHandlerImpl {
+        + handle(job: DispatchJob): void
+    }
+
+}
+
+' ─────────────────────────────────────────
+' MANAGEMENT LAYER
+' ─────────────────────────────────────────
+
+package "Management" {
+
+    class MappingController {
+        + createMapping(mapping: ChannelMapping): ResponseEntity
+        + listMappings(): ResponseEntity
+        + deleteMapping(mappingId: String): ResponseEntity
+    }
+
+    class EventTypeController {
+        + registerEventType(eventType: String): ResponseEntity
+        + listEventTypes(): ResponseEntity
+    }
+
+    class DeliveryStatusController {
+        + getStatus(eventId: String): ResponseEntity
+        + getAttempts(jobId: String): ResponseEntity
+    }
+
+}
+
+' ─────────────────────────────────────────
+' STORAGE
+' ─────────────────────────────────────────
+
+package "Storage" {
+
+    interface MappingRepository {
+        + save(mapping: ChannelMapping): ChannelMapping
+        + findByEventType(eventType: String): List<ChannelMapping>
+        + findAll(): List<ChannelMapping>
+        + deleteById(mappingId: String): void
+    }
+
+    interface DeliveryRepository {
+        + save(attempt: DeliveryAttempt): DeliveryAttempt
+        + findByEventId(eventId: String): List<DeliveryAttempt>
+        + findByJobId(jobId: String): List<DeliveryAttempt>
+        + existsByEventId(eventId: String): boolean
+    }
+
+    interface TemplateRepository {
+        + findByEventTypeAndChannelType(eventType: String, channelType: ChannelType): Template
+    }
+
+}
+
+' ─────────────────────────────────────────
+' INTERFACE IMPLEMENTATIONS
+' ─────────────────────────────────────────
+
+EventNormalizerImpl    ..|> EventNormalizer
+EventRouterImpl        ..|> EventRouter
+EmailChannel           ..|> NotificationChannel
+WebhookChannel         ..|> NotificationChannel
+TemplateRendererImpl   ..|> TemplateRenderer
+RetryHandlerImpl       ..|> RetryHandler
+DeadLetterHandlerImpl  ..|> DeadLetterHandler
+
+' ─────────────────────────────────────────
+' DEPENDENCIES
+' ─────────────────────────────────────────
+
+' Intake
+HttpEventController    --> EventNormalizer
+KafkaIntakeConsumer    --> EventNormalizer
+EventNormalizerImpl    --> DeliveryRepository : idempotency check
+EventNormalizerImpl    --> EventRouter
+
+' Routing
+EventRouterImpl        --> RoutingTable
+EventRouterImpl        --> TemplateRenderer
+EventRouterImpl        --> DeliveryRepository : write PENDING
+RoutingTable           --> MappingRepository
+
+' Dispatch
+NotificationDispatcher --> NotificationChannel
+NotificationDispatcher --> DeliveryRepository : write SENT / FAILED
+NotificationDispatcher --> RetryHandler
+NotificationDispatcher --> DeadLetterHandler
+
+' Reliability
+RetryHandlerImpl       --> DeadLetterHandler
+
+' Management
+MappingController      --> MappingRepository
+DeliveryStatusController --> DeliveryRepository
+
+' Template
+TemplateRendererImpl   --> TemplateRepository
+
+' ─────────────────────────────────────────
+' DOMAIN TYPE RELATIONSHIPS
+' ─────────────────────────────────────────
+
+InternalEvent          "1" --> "0..*" DispatchJob       : produces
+DispatchJob            "1" --> "0..*" DeliveryAttempt   : tracked by
+DispatchJob            -->            RenderedMessage    : carries
+ChannelMapping         -->            ChannelType
+DeliveryAttempt        -->            DeliveryStatus
+DeliveryAttempt        -->            ChannelType
+Template               -->            ChannelType
+
+@enduml
