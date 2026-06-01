@@ -1,0 +1,41 @@
+databaseChangeLog:
+  - changeSet:
+      id: 0003
+      author: berend
+      changes:
+        - createTable:
+            tableName: template
+            columns:
+              - column:
+                  name: template_id
+                  type: VARCHAR(36)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: event_type
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: channel_type
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: subject_pattern
+                  type: VARCHAR(500)
+              - column:
+                  name: body_pattern
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            tableName: template
+            indexName: idx_template_event_type_channel_type
+            columns:
+              - column:
+                  name: event_type
+              - column:
+                  name: channel_type
